@@ -13,6 +13,7 @@ minio = "7.1.0"
 ipykernel = "^6.6.0"
 jupyter = "^1.0.0"
 scikit-learn = "^1.0.2"
+transformers = "4.8.0"
 
 [tool.poetry.dev-dependencies]
 
