@@ -10,3 +10,9 @@
         * -1은 평범
         * 1은 엄청 공격적
     * 0~1로 스케일링해서 사용하기
+
+## files
+
+* ruddit.csv : ruddit 데이터 전처리한 파일
+* train_pp.csv : ruddit.csv 에서 80% 데이터(학습용)
+* dev_pp.csv : ruddit.csv 에서 20% 데이터(검증용)

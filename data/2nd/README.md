@@ -19,3 +19,9 @@
     * identity_annotator_count : 해당 커멘트에 대해 identity 평가를 몇명이나 했는지
     * toxicity_annotator_count : 해당 커멘트에 대해 toxicity 평가를 몇명이나 했는지
         * 5명 이상인 커멘트에 대해 실시하면 신뢰도 높임
+
+## files
+
+* jigsaw_unintended_preprocessing.csv : 두번째 대회 데이터 중 학습, 테스트 데이터 합쳐서 전처리한 파일
+* train_pp.csv : jigsaw_unintended_preprocessing.csv 에서 80% 데이터(학습용)
+* dev_pp.csv : jigsaw_unintended_preprocessing.csv 에서 20% 데이터(검증용)
