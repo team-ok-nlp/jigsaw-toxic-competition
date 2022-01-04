@@ -1,3 +1,36 @@
+import os
+import pandas as pd
+
+from minio import Minio
+from minio.error import InvalidResponseError
+
+BASE_DIR = os.path.abspath('../')
+
+def getData(ip='10.250.108.225', port='3011',
+				userid='minioadmin', pwd='minioadmin',
+				bucket='jigsaw', data_path='4th/v0/train.csv'):
+
+	# we assume that name of data path and minio bucket path are the same.
+	save_file_path = os.path.join(BASE_DIR,'data', data_path)
+
+	# get and save data from minio server when it is not in local dir
+	if not os.path.isfile(save_file_path):
+		minioClient = Minio(f'{ip}:{port}', 
+						access_key=userid,
+						secret_key=pwd,
+						secure=False)
+		try:
+			minioClient.fget_object(bucket, data_path, save_file_path)
+			print(f"Download Complete from Minio Server.")
+			print(f"{save_file_path}")
+		except InvalidResponseError as e:
+			print(e)
+
+	# load saved dataset in local	
+	data = pd.read_csv(save_file_path)
+
+	return data
+
 def clean(data, col):
     '''
     clean text in dataframe
