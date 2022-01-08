@@ -13,6 +13,7 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+from parallel import DataParallelModel, DataParallelCriterion
 
 from transformers import AutoTokenizer, AutoModel
 from transformers import AdamW, get_linear_schedule_with_warmup
@@ -38,17 +39,17 @@ class DataProcessor(Dataset):
 
     def tokenize(self, text):
         # tokenize and to tensor
-        embedding = self.tokenizer.encode_plus(
-                                text=text,
-                                padding='max_length',
-                                truncation=True,
-                                return_tensors="pt"
+        try:
+            embedding = self.tokenizer.encode_plus(
+                                    text=text,
+                                    padding='max_length',
+                                    truncation=True,
+                                    return_tensors="pt"
                         )
+        except:
+            print('text error')
+            print(text)
         
-        # print(text)
-        # print(embedding['input_ids'])
-        # print(embedding['token_type_ids'])
-        # print(embedding['attention_mask'])
         return embedding
 
     def __len__(self):
@@ -104,7 +105,8 @@ CONFIG = dict(
     lr = 5e-5,
     epochs = 5,
     num_class = 1,
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+    device_ids = [0,1]
 )
 
 # %%
@@ -131,10 +133,10 @@ def train(model, epochs, train_dataloader, dev_dataloader, criterion, optimizer,
 
             total_loss_train += batch_loss.item()
 
+            optimizer.zero_grad()
             batch_loss.backward()
             optimizer.step()
             scheduler.step()
-            optimizer.zero_grad()
 
             if i%1000 == 0:  
                 print(f'Epochs: {epoch_num + 1} | Train Loss: {batch_loss: .3f}')
@@ -150,6 +152,7 @@ def train(model, epochs, train_dataloader, dev_dataloader, criterion, optimizer,
                 mask = dev_input['attention_mask'].squeeze(1).to(device)
 
                 output = model(input_id, mask)
+                #print(len(output))
                 output = torch.squeeze(output, 1)
 
                 batch_loss = criterion(output.float(), dev_label.float())
@@ -177,13 +180,13 @@ tokenizer = AutoTokenizer.from_pretrained(CONFIG['pretrained_model'])
 train_df = getData(data_path=CONFIG['train_file'])
 # data processing with tokenizing
 train_data = DataProcessor(train_df, tokenizer, is_eval=False)
-train_dataloader = DataLoader(train_data, batch_size=CONFIG['train_batch_size'], shuffle=True, num_workers=4)
+train_dataloader = DataLoader(train_data, batch_size=CONFIG['train_batch_size'], shuffle=True, num_workers=0)
 
 # dev dataset
 dev_df = getData(data_path=CONFIG['dev_file'])
 # data processing with tokenizing
 dev_data = DataProcessor(dev_df, tokenizer, is_eval=False)
-dev_dataloader = DataLoader(dev_data, batch_size=CONFIG['dev_batch_size'], shuffle=True, num_workers=4)
+dev_dataloader = DataLoader(dev_data, batch_size=CONFIG['dev_batch_size'], shuffle=True, num_workers=0)
 
 # %% [markdown]
 # ### load pretrained model
@@ -192,10 +195,13 @@ dev_dataloader = DataLoader(dev_data, batch_size=CONFIG['dev_batch_size'], shuff
 model = BertRegressor(CONFIG['pretrained_model'], CONFIG['num_class'])
 
 if torch.cuda.device_count() > 1:
-    model = nn.DataParallel(model)
+    model = nn.DataParallel(model, device_ids=CONFIG['device_ids'])
+    #model = DataParallelModel(model, device_ids=CONFIG['device_ids'])
     model.to(CONFIG['device'])
 
 criterion = nn.MSELoss()
+#criterion = DataParallelCriterion(criterion, device_ids=CONFIG['device_ids'])
+
 optimizer = AdamW(
     model.parameters(),
     lr=CONFIG['lr'],
