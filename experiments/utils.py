@@ -37,21 +37,25 @@ def getData(ip='10.250.108.225', port='3011',
 
 	return data
 
-def clean(data, col):
+def clean(data, col=None, is_eval=False):
 	'''
 	clean text in dataframe
 	'''
+	
+	if not is_eval:
+		data = data[col]
+
 	# Clean some punctutations
 	# data[col] = data[col].str.replace('\n', ' \n ')
-	data[col] = data[col].str.replace(r'([a-zA-Z]+)([/!?.])([a-zA-Z]+)',r'\1 \2 \3')
+	data = data.str.replace(r'([a-zA-Z]+)([/!?.])([a-zA-Z]+)',r'\1 \2 \3')
 	# Replace repeating characters more than 3 times to length of 3
-	data[col] = data[col].str.replace(r'([*!?\'])\1\1{2,}',r'\1\1\1')    
+	data = data.str.replace(r'([*!?\'])\1\1{2,}',r'\1\1\1')    
 	# Add space around repeating characters
-	data[col] = data[col].str.replace(r'([*!?\']+)',r' \1 ')    
+	data = data.str.replace(r'([*!?\']+)',r' \1 ')    
 	# patterns with repeating characters 
-	data[col] = data[col].str.replace(r'([a-zA-Z])\1{2,}\b',r'\1\1')
-	data[col] = data[col].str.replace(r'([a-zA-Z])\1\1{2,}\B',r'\1\1\1')
-	data[col] = data[col].str.replace(r'[ ]{2,}|\n',' ')
+	data = data.str.replace(r'([a-zA-Z])\1{2,}\b',r'\1\1')
+	data = data.str.replace(r'([a-zA-Z])\1\1{2,}\B',r'\1\1\1')
+	data = data.str.replace(r'[ ]{2,}|\n',' ')
 	# filter ibans(국제계좌형식)
 	# filter email
 	# filter websites
@@ -63,7 +67,9 @@ def clean(data, col):
 			   '([0-9]+.[0-9]+.[0-9]+.[0-9]+)|' \
 			   '((?:(?:\+|00)33[\s.-]{0,3}(?:\(0\)[\s.-]{0,3})?|0)[1-9](?:(?:[\s.-]?\d{2}){4}|\d{2}(?:[\s.-]?\d{3}){2})|(\d{2}[ ]\d{2}[ ]\d{3}[ ]\d{3}))|' \
 			   '\"'
-	data[col] = data[col].str.replace(pattern, '')
+	data = data.str.replace(pattern, '')
+
+	data = data.dropna()
 	
 	return data
 
