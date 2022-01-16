@@ -85,3 +85,12 @@ def set_seed(seed = 12345):
     torch.backends.cudnn.benchmark = False
     # Set a fixed value for the hash seed
     os.environ['PYTHONHASHSEED'] = str(seed)
+
+def r2_score(outputs, labels):
+    '''MSE score
+    '''
+    labels_mean = np.mean(labels)
+    ss_tot = np.sum((labels - labels_mean) ** 2)
+    ss_res = np.sum((labels - outputs) ** 2)
+    r2 = 1 - ss_res / ss_tot
+    return r2

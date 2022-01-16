@@ -10,16 +10,16 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 from transformers import AdamW, get_linear_schedule_with_warmup
 
-from utils import clean, getData
+from utils import getData, set_seed, r2_score
 from data import DataProcessor
 from model import BertRegressor
 
 CONFIG = dict(
     seed = 12345,
     pretrained_model = 'bert-base-uncased',
-    output_dir = '../models/bert_regression_mini',
-    train_file = '4th/v0/train_mini.csv',
-    dev_file = '4th/v0/dev_mini.csv',
+    output_dir = '../models/bert_regression_v0',
+    train_file = '4th/v0/train.csv',
+    dev_file = '4th/v0/dev.csv',
     train_batch_size = 32,
     dev_batch_size = 32,
     lr = 5e-5,
@@ -29,8 +29,11 @@ CONFIG = dict(
     device_ids = [0,1]
 )
 
-def train(model, epochs, train_dataloader, dev_dataloader, criterion, optimizer, scheduler, device, output_dir):
+def train(config, model, train_dataloader, dev_dataloader, criterion, optimizer, scheduler, epochs, device):
 
+    if not os.path.isdir(config['output_dir']):
+        os.mkdir(config['output_dir'])
+    
     torch.cuda.empty_cache()
     model.train()
     for epoch_num in range(epochs):
@@ -57,14 +60,15 @@ def train(model, epochs, train_dataloader, dev_dataloader, criterion, optimizer,
             optimizer.step()
             scheduler.step()
 
-            if i%10000 == 0:  
-                print(f'Epochs: {epoch_num + 1} | Train Loss: {batch_loss: .3f}')
-                torch.save(model.state_dict(),\
-                        os.path.join(output_dir, f'bert_regression-{epoch_num+1}-{i}.pt'))
+            if i!=0 and i%(len(train_dataloader)//3) == 0:
+                #print(f'Epochs: {epoch_num + 1} | Train Loss: {batch_loss: .3f}')
+                torch.save(model.module.state_dict(),\
+                        os.path.join(config['output_dir'], f'model_ckpt-{(epoch_num+1)*i}.pt'))
 
         # validate using our dev set 
         model.eval()
-        total_loss_dev = 0.0
+        total_dev_loss = 0.0
+        total_dev_score = 0.0
 
         with torch.no_grad():
             for dev_input, dev_label in dev_dataloader:
@@ -72,26 +76,41 @@ def train(model, epochs, train_dataloader, dev_dataloader, criterion, optimizer,
                 input_id = dev_input['input_ids'].squeeze(1).to(device)
                 mask = dev_input['attention_mask'].squeeze(1).to(device)
 
-                output = model(input_id, mask)
+                outputs = model(input_id, mask)
                 #print(len(output))
-                output = torch.squeeze(output, 1)
+                outputs = torch.squeeze(outputs, 1)
 
-                batch_loss = criterion(output.float(), dev_label.float())
-                total_loss_dev += batch_loss.item()
+                batch_loss = criterion(outputs.float(), dev_label.float())
+                total_dev_loss += batch_loss.item()
+                
+                # Move logits and labels to CPU
+                logits = outputs.detach().cpu().numpy()
+                label_ids = dev_label.cpu().numpy()
+
+                # Calculate the accuracy for this batch of test sentences, and
+                # accumulate it over all batches.
+                total_dev_score += r2_score(logits, label_ids)
 
                 del dev_label
                 del input_id
                 del mask
         
+        # Report the final accuracy for this validation run.
+        avg_dev_score = total_dev_score / len(dev_dataloader)
+        
         print(
             f'Epochs: {epoch_num + 1} | Train Loss: {total_loss_train / len(train_dataloader): .3f} \
-            | Val Loss: {total_loss_dev / len(dev_dataloader): .3f}')
+            | Val Loss: {total_dev_loss / len(dev_dataloader): .3f}\
+                Val score: {avg_dev_score}')
 
+        
         torch.save(model.module.state_dict(),\
-                os.path.join(output_dir, f'bert_regression-{epoch_num+1}-{len(train_dataloader)}.pt'))
+                os.path.join(config['output_dir'], f'model_ckpt.pt'))
 
 
 if __name__ == '__main__':
+    set_seed(CONFIG['seed'])
+
     # load model
     tokenizer = AutoTokenizer.from_pretrained(CONFIG['pretrained_model'])
     model = BertRegressor(CONFIG['pretrained_model'], CONFIG['num_class'])
@@ -130,7 +149,5 @@ if __name__ == '__main__':
                     num_training_steps=num_training_steps
     )
 
-    device = CONFIG['device']
-    output_dir = CONFIG['output_dir']
-    
-    train(model, epochs, train_dataloader, dev_dataloader, criterion, optimizer, scheduler, device, output_dir)
+    device = CONFIG['device'] 
+    train(CONFIG, model, train_dataloader, dev_dataloader, criterion, optimizer, scheduler, epochs, device)
