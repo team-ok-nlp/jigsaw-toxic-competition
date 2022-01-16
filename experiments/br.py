@@ -3,7 +3,6 @@
 
 # # BERT Regression 
 
-
 import pandas as pd
 import numpy as np
 import random
@@ -12,8 +11,6 @@ import os
 import time
 import datetime
 
-
-
 ## Dataset
 from torch.utils.data import Dataset
 from transformers import AutoTokenizer
@@ -21,13 +18,15 @@ from transformers import AutoTokenizer
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 
+from torch.nn.utils.clip_grad import clip_grad_norm_
+from transformers import AutoModel
 
 from transformers import AutoModelForSequenceClassification, BertForSequenceClassification
 from transformers import AdamW, get_linear_schedule_with_warmup
 from torch import nn
 from tqdm import tqdm
-from parallel import DataParallelCriterion, DataParallelModel
-
+# from parallel import DataParallelCriterion, DataParallelModel
+from utils import clean
 
 # 학습 config는 추후 json 파일로 저장해놓기
 CONFIG = dict(
@@ -36,12 +35,15 @@ CONFIG = dict(
     output_dir = '../models/bert_regression_original',
     train_file = '../data/4th/v0/train.csv',
     dev_file = '../data/4th/v0/dev.csv',
+    # output_dir = '../models/bert_regression_test',
+    # train_file = '../data/4th/v0/tr.csv',
+    # dev_file = '../data/4th/v0/dv.csv',
     train_batch_size = 32,
     dev_batch_size = 32,
     lr = 5e-5,
     epochs = 5,
     num_classes = 1,
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     device_ids = [0, 1]
 )
 
@@ -61,63 +63,6 @@ def set_seed(seed = 12345):
     os.environ['PYTHONHASHSEED'] = str(seed)
 
 
-
-
-
-
-class RegressionDataset(Dataset):
-    '''toxic dataset for BERT regression
-    '''
-    def __init__(self, tokenizer:AutoTokenizer, file_path, dir_path, mode, force=False) -> None:
-        self.file_path = file_path
-        self.dir_path = dir_path # output dir
-        self.tokenizer = tokenizer
-        self.mode = mode
-        self.force = force 
-        self.inputs, self.labels = self.load_data()
-    
-    def load_data(self):
-
-        if not os.path.isdir(self.dir_path):
-            os.mkdir(self.dir_path)
-
-        if not self.force and os.path.isfile(os.path.join(self.dir_path, f"{self.mode}_X.pt")):
-            # torch tensor를 불러오기
-            encodings = torch.load(os.path.join(self.dir_path, f"{self.mode}_X.pt"))
-            labels = torch.load(os.path.join(self.dir_path, f"{self.mode}_Y.pt"))
-        else:
-            # 새로 파일 만들고 싶을 때 기존의 파일 지움
-            if self.force and os.path.isfile(os.path.join(self.dir_path, f"{self.mode}_X.pt")):
-                os.remove(os.path.join(self.dir_path, f"{self.mode}_X.pt"))
-                os.remove(os.path.join(self.dir_path, f"{self.mode}_Y.pt"))
-
-            # read csv file
-            data = pd.read_csv(self.file_path)
-            encodings = self.tokenizer(text=data.comment.tolist(),
-                                       padding='max_length',
-                                       truncation=True)
-
-            labels = data.score.to_numpy()
-
-            # save the tensor
-            torch.save(encodings, os.path.join(self.dir_path, f"{self.mode}_X.pt"))
-            torch.save(labels, os.path.join(self.dir_path, f"{self.mode}_Y.pt"))
-        
-        return encodings, labels
-
-    def __getitem__(self, idx):
-        # return self.inputs[idx, :, :], self.labels[idx]
-        item = {key: torch.tensor(val[idx], dtype=torch.long) for key, val in self.inputs.items()}
-        item['labels'] = torch.tensor(self.labels[idx])
-        return item
-
-    def __len__(self):
-        return self.labels.size
-        
-
-
-
-
 class RegressionDataset(Dataset):
     '''toxic dataset for BERT regression
     '''
@@ -132,7 +77,6 @@ class RegressionDataset(Dataset):
         self.data = pd.read_csv(self.file_path)
         self.labels = self.data.score.to_numpy()
         
-
     def __getitem__(self, idx):
         encodings = self.tokenizer(text=self.data.comment[idx],
                                    padding='max_length',
@@ -145,9 +89,6 @@ class RegressionDataset(Dataset):
     def __len__(self):
         return self.labels.size
         
-
-
-
 
 class LossEarlyStopper:
     """Early stopper
@@ -202,15 +143,13 @@ def format_time(elapsed):
     return str(datetime.timedelta(seconds=elapsed_rounded))
 
 def r2_score(outputs, labels):
-    labels_mean = torch.mean(labels)
-    ss_tot = torch.sum((labels - labels_mean) ** 2)
-    ss_res = torch.sum((labels - outputs) ** 2)
+    '''MSE score
+    '''
+    labels_mean = np.mean(labels)
+    ss_tot = np.sum((labels - labels_mean) ** 2)
+    ss_res = np.sum((labels - outputs) ** 2)
     r2 = 1 - ss_res / ss_tot
     return r2
-
-
-from torch.nn.utils.clip_grad import clip_grad_norm_
-from transformers import AutoModel
 
 class LMRegressor(nn.Module):
 
@@ -232,9 +171,8 @@ class LMRegressor(nn.Module):
         return outputs
 
 
-
 def train(config, model, optimizer, scheduler, loss_function, epochs,       
-          train_dataloader, dev_dataloader, device='cpu', clip_value=2, freq=40,patience=-1):
+          train_dataloader, dev_dataloader, device='cpu', clip_value=2, freq=40, patience=-1):
     """
     train model
     Arguments:
@@ -246,6 +184,7 @@ def train(config, model, optimizer, scheduler, loss_function, epochs,
 
     # Measure the total training time for the whole run.
     total_t0 = time.time()
+    best_score = -99999
     
     if patience>-1:
         es = LossEarlyStopper(patience)
@@ -266,7 +205,6 @@ def train(config, model, optimizer, scheduler, loss_function, epochs,
         # Reset the total loss for this epoch.
         total_train_loss = 0
         
-        best_score = 0
         model.train()
         for step, batch in enumerate(tqdm(train_dataloader)): 
             
@@ -377,6 +315,8 @@ def train(config, model, optimizer, scheduler, loss_function, epochs,
             print('Early Stopped.')
             break
         
+        if not os.path.isdir(config['output_dir']):
+            os.mkdir(config['output_dir'])
         if best_score < avg_val_score:
             best_score = avg_val_score
             check_point = {
@@ -385,7 +325,11 @@ def train(config, model, optimizer, scheduler, loss_function, epochs,
                 # 'scheduler': scheduler.state_dict()
             }
 
+            torch.save(check_point, os.path.join(config['output_dir'],'best_model_ckpt.pt'))
+            print(f"model save - {os.path.join(config['output_dir'],'best_model_ckpt.pt')} ")
+        else:
             torch.save(check_point, os.path.join(config['output_dir'],'model_ckpt.pt'))
+            print(f"model save - {os.path.join(config['output_dir'],'model_ckpt.pt')} ")
             
 
     print("\nTraining complete!")
@@ -412,8 +356,9 @@ if torch.cuda.device_count() > 1:
     print(f"device_ids : {CONFIG['device_ids']}")
 
     model = torch.nn.DataParallel(model, device_ids=CONFIG['device_ids'])
-    # model = DataParallelModel(model, device_ids=CONFIG['device_ids'])
     model.to(CONFIG['device'])
+
+# model.to(CONFIG['device'])
 
 optimizer = AdamW(model.parameters(),
                   lr=CONFIG['lr'],
@@ -429,5 +374,5 @@ loss_function = nn.MSELoss()
 
 
 train(CONFIG, model, optimizer, scheduler, loss_function, CONFIG['epochs'],       
-      train_dataloader, dev_dataloader, device=CONFIG['device'], clip_value=2, freq=1000, patience=3)
+      train_dataloader, dev_dataloader, device=CONFIG['device'], clip_value=2, freq=1000, patience=4)
 
