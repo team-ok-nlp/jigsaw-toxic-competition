@@ -14,8 +14,8 @@ class BertRegressor(nn.Module):
         self.bert = AutoModel.from_pretrained(model_name)
         self.regressor = nn.Sequential(
             nn.Dropout(p=0.2),
-            nn.Linear(768, num_class),
-            nn.ReLU())
+            nn.Linear(768, num_class))
+            #nn.ReLU())
 
     def forward(self, input_id, mask):
 
