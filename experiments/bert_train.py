@@ -12,7 +12,7 @@ from transformers import AdamW, get_linear_schedule_with_warmup
 
 from utils import getData, set_seed, r2_score
 from data import DataProcessor
-from model import BertRegressor
+from model import AutoRegressor
 
 CONFIG = dict(
     seed = 12345,
@@ -113,7 +113,7 @@ if __name__ == '__main__':
 
     # load model
     tokenizer = AutoTokenizer.from_pretrained(CONFIG['pretrained_model'])
-    model = BertRegressor(CONFIG['pretrained_model'], CONFIG['num_class'])
+    model = AutoRegressor(CONFIG['pretrained_model'], CONFIG['num_class'])
 
     if torch.cuda.device_count() > 1:
         model = nn.DataParallel(model, device_ids=CONFIG['device_ids'])
