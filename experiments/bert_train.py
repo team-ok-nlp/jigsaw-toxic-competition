@@ -16,12 +16,12 @@ from model import AutoRegressor
 
 CONFIG = dict(
     seed = 12345,
-    pretrained_model = 'bert-base-uncased',
-    output_dir = '../models/bert_regression_v0',
-    train_file = '4th/v0/train.csv',
-    dev_file = '4th/v0/dev.csv',
-    train_batch_size = 32,
-    dev_batch_size = 32,
+    pretrained_model = "vinai/bertweet-base",
+    output_dir = '../models/bertweet_v1',
+    train_file = '4th/v1/train.csv',
+    dev_file = '4th/v1/dev.csv',
+    train_batch_size = 256,
+    dev_batch_size = 256,
     lr = 5e-5,
     epochs = 5,
     num_class = 1,
@@ -36,6 +36,9 @@ def train(config, model, train_dataloader, dev_dataloader, criterion, optimizer,
     
     torch.cuda.empty_cache()
     model.train()
+
+    best_loss = np.inf
+    
     for epoch_num in range(epochs):
 
         total_loss_train = 0.0
@@ -103,16 +106,21 @@ def train(config, model, train_dataloader, dev_dataloader, criterion, optimizer,
             | Val Loss: {total_dev_loss / len(dev_dataloader): .3f}\
                 Val score: {avg_dev_score}')
 
-        
-        torch.save(model.module.state_dict(),\
-                os.path.join(config['output_dir'], f'model_ckpt.pt'))
+        if best_loss > avg_dev_loss:
+            best_loss = avg_dev_loss
+
+            if not os.path.isdir(config['output_dir']):
+                os.mkdir(config['output_dir'])
+
+            torch.save(model.module.state_dict(),\
+                    os.path.join(config['output_dir'], f'model_ckpt.pt'))
 
 
 if __name__ == '__main__':
     set_seed(CONFIG['seed'])
 
     # load model
-    tokenizer = AutoTokenizer.from_pretrained(CONFIG['pretrained_model'])
+    tokenizer = AutoTokenizer.from_pretrained(CONFIG['pretrained_model'], use_fast=False)
     model = AutoRegressor(CONFIG['pretrained_model'], CONFIG['num_class'])
 
     if torch.cuda.device_count() > 1:
