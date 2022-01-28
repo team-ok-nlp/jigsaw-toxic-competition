@@ -5,7 +5,7 @@ import random
 
 from minio import Minio
 from minio.error import InvalidResponseError
-
+import datetime
 import torch
 
 BASE_DIR = os.path.abspath('../')
@@ -94,3 +94,13 @@ def r2_score(outputs, labels):
     ss_res = np.sum((labels - outputs) ** 2)
     r2 = 1 - ss_res / ss_tot
     return r2
+
+def format_time(elapsed):
+    '''
+    Takes a time in seconds and returns a string hh:mm:ss
+    '''
+    # Round to the nearest second.
+    elapsed_rounded = int(round((elapsed)))
+    
+    # Format as hh:mm:ss
+    return str(datetime.timedelta(seconds=elapsed_rounded))
