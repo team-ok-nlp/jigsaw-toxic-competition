@@ -55,7 +55,7 @@ def main():
     features = FeatureUnion([
             ("vect1", TfidfVectorizer(analyzer = 'char_wb', ngram_range = (3,5))),
             ("vect2", TfidfVectorizer(analyzer = 'word', stop_words="english")),
-            ("vect2", bert_featurizer),
+            ("vect3", bert_featurizer),
         ])
 
     regressor = Ridge(alpha=10)
