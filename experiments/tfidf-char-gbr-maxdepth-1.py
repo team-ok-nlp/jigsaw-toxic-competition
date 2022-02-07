@@ -82,7 +82,7 @@ def main():
     if not os.path.isfile(os.path.join(CONFIG['output_dir'],'config.json')):
         with open(os.path.join(CONFIG['output_dir'],'config.json'), 'w') as writer:
             json.dump(CONFIG, writer)
-    print(f'*** {CONFIG["ouput_dir"]} saved.')
+    print(f'*** {CONFIG["output_dir"]} saved.')
 
     # validation
     # validate and test

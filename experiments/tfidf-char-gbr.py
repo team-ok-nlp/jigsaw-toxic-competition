@@ -81,7 +81,7 @@ def main():
     if not os.path.isfile(os.path.join(CONFIG['output_dir'],'config.json')):
         with open(os.path.join(CONFIG['output_dir'],'config.json'), 'w') as writer:
             json.dump(CONFIG, writer)
-    print(f'*** {CONFIG["ouput_dir"]} saved.')
+    print(f'*** {CONFIG["output_dir"]} saved.')
 
     # validation
     # validate and test
@@ -107,5 +107,33 @@ def main():
     # df_sub[['comment_id', 'score']].to_csv("submission.csv", index=False)
 
 
+def validate():
+    # load model
+    with open(os.path.join(CONFIG['output_dir'],'model.pkl'), 'rb') as f:
+        model = pickle.load(f)
+    
+    set_seed(CONFIG['seed'])
+    # load data
+    # Validation data 
+    df_val = getData(data_path="4th/validation_cleaned.csv")
+    
+    val_preds_arr1 = np.zeros((df_val.shape[0], 1))
+    val_preds_arr2 = np.zeros((df_val.shape[0], 1))
+    
+    # validate 
+    print("\npredict validation data ")
+    val_preds_arr1[:,0] = model.predict(df_val['less_toxic'])
+    val_preds_arr2[:,0] = model.predict(df_val['more_toxic'])
+
+    p1 = val_preds_arr1.mean(axis=1)
+    p2 = val_preds_arr2.mean(axis=1)
+    acc = np.round((p1 < p2).mean() * 100,2)
+    print(f'Validation Accuracy is {acc }')
+    with open(os.path.join(CONFIG['output_dir'], 'validation_result.txt'), 'w') as writer:
+        result_text = f"Model: {CONFIG['output_dir']}\nAccuracy: {acc}"
+        writer.write(result_text)
+
+
 if __name__=='__main__':
-    main()
+    # main()
+    validate()
